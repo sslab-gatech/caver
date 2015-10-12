@@ -60,11 +60,14 @@ static bool analyzeGlobalAux(const Value *V, GlobalStatus &GS,
         return true;
     } else if (const Instruction *I = dyn_cast<Instruction>(UR)) {
       if (!GS.HasMultipleAccessingFunctions) {
-        const Function *F = I->getParent()->getParent();
-        if (!GS.AccessingFunction)
-          GS.AccessingFunction = F;
-        else if (GS.AccessingFunction != F)
-          GS.HasMultipleAccessingFunctions = true;
+        if (I->getParent() && I->getParent()->getParent()) {
+          const Function *F = I->getParent()->getParent();
+
+          if (!GS.AccessingFunction)
+            GS.AccessingFunction = F;
+          else if (GS.AccessingFunction != F)
+            GS.HasMultipleAccessingFunctions = true;
+        }
       }
       if (const LoadInst *LI = dyn_cast<LoadInst>(I)) {
         GS.IsLoaded = true;

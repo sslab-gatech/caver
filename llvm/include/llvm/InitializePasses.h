@@ -122,6 +122,8 @@ void initializeGCOVProfilerPass(PassRegistry&);
 void initializeAddressSanitizerPass(PassRegistry&);
 void initializeAddressSanitizerModulePass(PassRegistry&);
 void initializeMemorySanitizerPass(PassRegistry&);
+void initializeCastVerifierPass(PassRegistry&);
+void initializeCverPruneStackPass(PassRegistry&);
 void initializeThreadSanitizerPass(PassRegistry&);
 void initializeDataFlowSanitizerPass(PassRegistry&);
 void initializeScalarizerPass(PassRegistry&);

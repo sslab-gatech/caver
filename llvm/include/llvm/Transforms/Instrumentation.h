@@ -32,6 +32,7 @@ inline void *getDFSanRetValTLSPtrForJIT() {
 
 namespace llvm {
 
+class Pass;
 class ModulePass;
 class FunctionPass;
 
@@ -69,6 +70,10 @@ ModulePass *createAddressSanitizerModulePass();
 
 // Insert MemorySanitizer instrumentation (detection of uninitialized reads)
 FunctionPass *createMemorySanitizerPass(int TrackOrigins = 0);
+
+FunctionPass *createCastVerifierPass();
+
+Pass *createCverPruneStackPass();
 
 // Insert ThreadSanitizer (race detection) instrumentation
 FunctionPass *createThreadSanitizerPass();

@@ -26,6 +26,8 @@
 #ifndef LLVM_ADT_STATISTIC_H
 #define LLVM_ADT_STATISTIC_H
 
+#define LLVM_ENABLE_STATS
+
 #include "llvm/Support/Atomic.h"
 #include "llvm/Support/Valgrind.h"
 
