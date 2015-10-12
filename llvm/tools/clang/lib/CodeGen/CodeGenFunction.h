@@ -247,6 +247,20 @@ public:
   /// \brief Sanitizer options to use for this function.
   const SanitizerOptions *SanOpts;
 
+  /// \brief True if CodeGen currently emits code implementing sanitizer checks.
+  bool IsSanitizerScope;
+  QualType QualTypeForSantizerScope;  
+  StringRef SanitizerScopeMetaString;
+  
+  /// \brief RAII object to set/unset CodeGenFunction::IsSanitizerScope.
+  class SanitizerScope {
+    CodeGenFunction *CGF;
+  public:
+    SanitizerScope(CodeGenFunction *CGF, StringRef MetaString = StringRef(),
+                   QualType QTY = QualType());
+    ~SanitizerScope();
+  };
+
   /// In ARC, whether we should autorelease the return value.
   bool AutoreleaseResult;
 
@@ -1706,10 +1720,19 @@ public:
   /// calls to EmitTypeCheck can be skipped.
   bool sanitizePerformTypeCheck() const;
 
+  llvm::CallInst *EmitTypeCastCheck(QualType DstTy, QualType SrcTy,
+                                    CXXRecordDecl *RD,
+                                    SourceLocation Loc,
+                                    llvm::Value *AfterAddress,
+                                    llvm::Value *BeforeAddress);
+  
   /// \brief Emit a check that \p V is the address of storage of the
   /// appropriate size and alignment for an object of type \p Type.
-  void EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc, llvm::Value *V,
-                     QualType Type, CharUnits Alignment = CharUnits::Zero());
+  llvm::CallInst* EmitTypeCheck(
+    TypeCheckKind TCK, SourceLocation Loc,
+    llvm::Value *Address, llvm::Value *BeforeAddress,
+    QualType Type, QualType SrcType,
+    CharUnits Alignment = CharUnits::Zero());
 
   /// \brief Emit a check that \p Base points into an array object, which
   /// we can access at index \p Index. \p Accessed should be \c false if we
@@ -2540,6 +2563,10 @@ public:
                  ArrayRef<llvm::Constant *> StaticArgs,
                  ArrayRef<llvm::Value *> DynamicArgs,
                  CheckRecoverableKind Recoverable);
+
+  llvm::CallInst * EmitTypeCastHelper(StringRef FunctionName,
+                                      ArrayRef<llvm::Constant *> StaticArgs,
+                                      ArrayRef<llvm::Value *> DynamicArgs);
 
   /// \brief Create a basic block that will call the trap intrinsic, and emit a
   /// conditional branch to it, for the -ftrapv checks.

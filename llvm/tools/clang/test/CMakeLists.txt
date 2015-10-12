@@ -63,3 +63,21 @@ set_target_properties(check-clang PROPERTIES FOLDER "Clang tests")
 add_custom_target(clang-test)
 add_dependencies(clang-test check-clang)
 set_target_properties(clang-test PROPERTIES FOLDER "Clang tests")
+
+
+#########################################
+# Targetted testing for CastVerifier
+
+set(CLANG_CVER_TEST_PARAMS
+  clang_site_config=${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg
+  clang_cver_test_dir="CodeGen/cver"
+  )
+
+add_lit_testsuite(check-clang-cver "Running the CastVerifier regression tests"
+  ${CMAKE_CURRENT_BINARY_DIR}
+  #LIT ${LLVM_LIT}
+  PARAMS ${CLANG_CVER_TEST_PARAMS}
+  DEPENDS ${CLANG_TEST_DEPS}
+  ARGS ${CLANG_TEST_EXTRA_ARGS}
+  )
+set_target_properties(check-clang PROPERTIES FOLDER "Clang Cver tests")

@@ -44,6 +44,7 @@ public:
   void HandleTopLevelDeclInObjCContainer(DeclGroupRef D) override;
   void CompleteTentativeDefinition(VarDecl *D) override;
   void HandleVTable(CXXRecordDecl *RD, bool DefinitionRequired) override;
+  void HandleTHTable(CXXRecordDecl *RD, bool DefinitionRequired) override;
   ASTMutationListener *GetASTMutationListener() override;
   ASTDeserializationListener *GetASTDeserializationListener() override;
   void PrintStats() override;

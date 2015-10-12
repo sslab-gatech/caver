@@ -4876,6 +4876,11 @@ public:
   /// by code generation).
   llvm::DenseMap<CXXRecordDecl *, bool> VTablesUsed;
 
+  /// Type Hierarchy Tables
+  typedef std::pair<CXXRecordDecl*, SourceLocation> THTableUse;
+  SmallVector<THTableUse, 16> THTableUses;
+  llvm::DenseMap<CXXRecordDecl *, bool> THTablesUsed;
+
   /// \brief Load any externally-stored vtable uses.
   void LoadExternalVTableUses();
 
@@ -4908,6 +4913,10 @@ public:
   ///
   /// \returns true if any work was done, false otherwise.
   bool DefineUsedVTables();
+
+  void MarkTHTableUsed(SourceLocation Loc, CXXRecordDecl *Class,
+                       bool DefinitionRequired = false);
+  bool DefineUsedTHTables();
 
   void AddImplicitlyDeclaredMembersToClass(CXXRecordDecl *ClassDecl);
 

@@ -3464,6 +3464,7 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
   if (Recursive) {
     // Define any pending vtables.
     DefineUsedVTables();
+    DefineUsedTHTables();
 
     // Instantiate any pending implicit instantiations found during the
     // instantiation of this template.
@@ -3820,6 +3821,7 @@ void Sema::InstantiateVariableDefinition(SourceLocation PointOfInstantiation,
       if (Recursive) {
         // Define any newly required vtables.
         DefineUsedVTables();
+        DefineUsedTHTables();
 
         // Instantiate any pending implicit instantiations found during the
         // instantiation of this template.
@@ -3985,6 +3987,7 @@ void Sema::InstantiateVariableDefinition(SourceLocation PointOfInstantiation,
   if (Recursive) {
     // Define any newly required vtables.
     DefineUsedVTables();
+    DefineUsedTHTables();
 
     // Instantiate any pending implicit instantiations found during the
     // instantiation of this template.

@@ -15,6 +15,7 @@
 #define CLANG_CODEGEN_CODEGENMODULE_H
 
 #include "CGVTables.h"
+#include "CGTHTables.h"
 #include "CodeGenTypes.h"
 #include "SanitizerBlacklist.h"
 #include "clang/AST/Attr.h"
@@ -280,16 +281,19 @@ class CodeGenModule : public CodeGenTypeCache {
   llvm::LLVMContext &VMContext;
 
   CodeGenTBAA *TBAA;
-  
+
   mutable const TargetCodeGenInfo *TheTargetCodeGenInfo;
-  
+
   // This should not be moved earlier, since its initialization depends on some
   // of the previous reference members being already initialized and also checks
   // if TheTargetCodeGenInfo is NULL
   CodeGenTypes Types;
- 
+
   /// Holds information about C++ vtables.
   CodeGenVTables VTables;
+
+  /// Holds information about Type Hierarchy tables.
+  CodeGenTHTables THTables;
 
   CGObjCRuntime* ObjCRuntime;
   CGOpenCLRuntime* OpenCLRuntime;
@@ -374,6 +378,9 @@ class CodeGenModule : public CodeGenTypeCache {
   /// Map used to get unique type descriptor constants for sanitizers.
   llvm::DenseMap<QualType, llvm::Constant *> TypeDescriptorMap;
 
+  /// Map used to get unique type hierarchy table.
+  llvm::DenseMap<const CXXRecordDecl *, llvm::GlobalVariable *> THTableMap;
+
   /// Map used to track internal linkage functions declared within
   /// extern "C" regions.
   typedef llvm::MapVector<IdentifierInfo *,
@@ -396,7 +403,7 @@ class CodeGenModule : public CodeGenTypeCache {
   /// here so that the initializer will be performed in the correct
   /// order.
   llvm::DenseMap<const Decl*, unsigned> DelayedCXXInitPosition;
-  
+
   typedef std::pair<OrderGlobalInits, llvm::Function*> GlobalInitData;
 
   struct GlobalInitPriorityCmp {
@@ -432,11 +439,11 @@ class CodeGenModule : public CodeGenTypeCache {
 
   /// \brief The LLVM type corresponding to NSConstantString.
   llvm::StructType *NSConstantStringType;
-  
+
   /// \brief The type used to describe the state of a fast enumeration in
   /// Objective-C's for..in loop.
   QualType ObjCFastEnumerationStateType;
-  
+
   /// @}
 
   /// Lazily create the Objective-C runtime
@@ -483,6 +490,8 @@ public:
 
   ~CodeGenModule();
 
+  CodeGenTHTables *getTHTables();
+  
   void clear();
 
   /// Finalize LLVM code generation.
@@ -531,7 +540,7 @@ public:
   llvm::Constant *getStaticLocalDeclAddress(const VarDecl *D) {
     return StaticLocalDeclMap[D];
   }
-  void setStaticLocalDeclAddress(const VarDecl *D, 
+  void setStaticLocalDeclAddress(const VarDecl *D,
                                  llvm::Constant *C) {
     StaticLocalDeclMap[D] = C;
   }
@@ -539,7 +548,7 @@ public:
   llvm::GlobalVariable *getStaticLocalDeclGuardAddress(const VarDecl *D) {
     return StaticLocalDeclGuardMap[D];
   }
-  void setStaticLocalDeclGuardAddress(const VarDecl *D, 
+  void setStaticLocalDeclGuardAddress(const VarDecl *D,
                                       llvm::GlobalVariable *C) {
     StaticLocalDeclGuardMap[D] = C;
   }
@@ -561,6 +570,14 @@ public:
   void setAtomicGetterHelperFnMap(QualType Ty,
                             llvm::Constant *Fn) {
     AtomicGetterHelperFnMap[Ty] = Fn;
+  }
+
+  llvm::GlobalVariable *getTHTableFromMap(const CXXRecordDecl *RD) {
+    return THTableMap[RD];
+  }
+
+  void setTHTableInMap(const CXXRecordDecl *RD, llvm::GlobalVariable *GV) {
+    THTableMap[RD] = GV;
   }
 
   llvm::Constant *getTypeDescriptorFromMap(QualType Ty) {
@@ -592,10 +609,10 @@ public:
 
   bool shouldUseTBAA() const { return TBAA != nullptr; }
 
-  const TargetCodeGenInfo &getTargetCodeGenInfo(); 
-  
+  const TargetCodeGenInfo &getTargetCodeGenInfo();
+
   CodeGenTypes &getTypes() { return Types; }
- 
+
   CodeGenVTables &getVTables() { return VTables; }
 
   ItaniumVTableContext &getItaniumVTableContext() {
@@ -699,6 +716,9 @@ public:
   /// Get a reference to the target of VD.
   llvm::Constant *GetWeakRefReference(const ValueDecl *VD);
 
+  /// Get the address of the type table for the given type.
+  llvm::Constant *GetAddrOfTypeTable(const CXXRecordDecl *RD);
+
   /// Returns the offset from a derived class to  a class. Returns null if the
   /// offset is 0.
   llvm::Constant *
@@ -738,7 +758,7 @@ public:
 
   /// Fetches the global unique block count.
   int getUniqueBlockCount() { return ++Block.GlobalUniqueCount; }
-  
+
   /// Fetches the type of a generic block descriptor.
   llvm::Type *getBlockDescriptorType();
 
@@ -747,7 +767,7 @@ public:
 
   /// Gets the address of a block which requires no captures.
   llvm::Constant *GetAddrOfGlobalBlock(const BlockExpr *BE, const char *);
-  
+
   /// Return a pointer to a constant CFString object for the given string.
   llvm::Constant *GetAddrOfConstantCFString(const StringLiteral *Literal);
 
@@ -789,7 +809,7 @@ public:
   /// \brief Retrieve the record type that describes the state of an
   /// Objective-C fast enumeration loop (for..in).
   QualType getObjCFastEnumerationStateType();
-  
+
   /// Return the address of the constructor of the given type.
   llvm::GlobalValue *
   GetAddrOfCXXConstructor(const CXXConstructorDecl *ctor, CXXCtorType ctorType,
@@ -950,6 +970,8 @@ public:
 
   void EmitVTable(CXXRecordDecl *Class, bool DefinitionRequired);
 
+  void EmitTHTable(CXXRecordDecl *Class, bool DefinitionRequired);
+
   /// Emit the RTTI descriptors for the builtin types.
   void EmitFundamentalRTTIDescriptors();
 
@@ -974,7 +996,7 @@ public:
 
   /// Return the store size, in character units, of the given LLVM type.
   CharUnits GetTargetTypeStoreSize(llvm::Type *Ty) const;
-  
+
   /// Returns LLVM linkage for a declarator.
   llvm::GlobalValue::LinkageTypes
   getLLVMLinkageForDeclarator(const DeclaratorDecl *D, GVALinkage Linkage,
@@ -1065,7 +1087,7 @@ private:
   void EmitAliasDefinition(GlobalDecl GD);
   void EmitObjCPropertyImplementations(const ObjCImplementationDecl *D);
   void EmitObjCIvarInitializations(ObjCImplementationDecl *D);
-  
+
   // C++ related functions.
 
   bool TryEmitDefinitionAsAlias(GlobalDecl Alias, GlobalDecl Target,

@@ -49,6 +49,7 @@ add_clang_library(clangCodeGen
   CGStmtOpenMP.cpp
   CGVTT.cpp
   CGVTables.cpp
+  CGTHTables.cpp  
   CodeGenABITypes.cpp
   CodeGenAction.cpp
   CodeGenFunction.cpp

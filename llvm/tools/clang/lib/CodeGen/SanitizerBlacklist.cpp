@@ -50,3 +50,13 @@ bool SanitizerBlacklist::isIn(const llvm::GlobalVariable &G,
 bool SanitizerBlacklist::isBlacklistedType(StringRef MangledTypeName) const {
   return SCL->inSection("type", MangledTypeName);
 }
+
+bool SanitizerBlacklist::isBlacklistedAllocType(
+  StringRef MangledAllocTypeName) const {
+  return SCL->inSection("atype", MangledAllocTypeName);
+}
+
+bool SanitizerBlacklist::isBlacklistedSrc(const std::string &Str) const {
+  StringRef StrWithNull(Str.c_str(), Str.size() + 1);
+  return SCL->inSection("src", StrWithNull);
+}

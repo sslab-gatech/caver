@@ -1317,18 +1317,55 @@ Value *ScalarExprEmitter::VisitCastExpr(CastExpr *CE) {
     assert(DerivedClassDecl && "BaseToDerived arg isn't a C++ object pointer!");
 
     llvm::Value *V = Visit(E);
+    llvm::CallInst *CheckCall = nullptr;
 
-    llvm::Value *Derived =
-      CGF.GetAddressOfDerivedClass(V, DerivedClassDecl,
-                                   CE->path_begin(), CE->path_end(),
-                                   ShouldNullCheckClassCastValue(CE));
+    llvm::Value *Derived = nullptr;
+    {
+      // FIXME : Only leave the instruction metadata for Cver.
+      QualType DerivedTy = CGF.getContext().getTagDeclType(DerivedClassDecl);
+      CodeGenFunction::SanitizerScope SanScope(&CGF,
+                                               StringRef("cver_static_cast"),
+                                               DerivedTy);
+      Derived = CGF.GetAddressOfDerivedClass(V, DerivedClassDecl,
+                                             CE->path_begin(), CE->path_end(),
+                                             ShouldNullCheckClassCastValue(CE));
+    }
 
     // C++11 [expr.static.cast]p11: Behavior is undefined if a downcast is
     // performed and the object is not of the derived type.
-    if (CGF.sanitizePerformTypeCheck())
-      CGF.EmitTypeCheck(CodeGenFunction::TCK_DowncastPointer, CE->getExprLoc(),
-                        Derived, DestTy->getPointeeType());
+    if (CGF.sanitizePerformTypeCheck()) {
+      CodeGenFunction::SanitizerScope SanScope(&CGF,
+                                               StringRef("cver_check"));
+      CheckCall = CGF.EmitTypeCheck(CodeGenFunction::TCK_DowncastPointer,
+                                    CE->getExprLoc(), Derived, V,
+                                    DestTy->getPointeeType(),
+                                    E->getType()->getPointeeType());
+    }
 
+    // Don't do this instrumentation as we don't do nullification for now.
+    // if (CGF.SanOpts->Cver && CheckCall) {
+    //   CodeGenFunction::SanitizerScope SanScope(&CGF,
+    //                                            StringRef("cver_nullify"));
+      
+    //   llvm::BasicBlock *Done = CGF.createBasicBlock("cver.done");
+    //   llvm::BasicBlock *BadCast = CGF.createBasicBlock("cver.badcast");
+    //   llvm::BasicBlock *GoodCast = CGF.createBasicBlock("cver.goodcast");
+    
+    //   llvm::Value *IsGoodCast = Builder.CreateIsNull(CheckCall);
+    //   Builder.CreateCondBr(IsGoodCast, BadCast, GoodCast);
+
+    //   CGF.EmitBlock(GoodCast);
+    //   Builder.CreateBr(Done);
+    //   CGF.EmitBlock(BadCast);
+    //   Builder.CreateBr(Done);
+    //   CGF.EmitBlock(Done);
+
+    //   llvm::PHINode *PHI = Builder.CreatePHI(Derived->getType(), 2);
+    //   PHI->addIncoming(Derived, GoodCast);
+    //   PHI->addIncoming(llvm::Constant::getNullValue(Derived->getType()),
+    //                    BadCast);
+    //   Derived = PHI;
+    // }
     return Derived;
   }
   case CK_UncheckedDerivedToBase:

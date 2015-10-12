@@ -135,6 +135,9 @@ public:
   /// it was actually used.
   virtual void HandleVTable(CXXRecordDecl *RD, bool DefinitionRequired) {}
 
+  ///
+  virtual void HandleTHTable(CXXRecordDecl *RD, bool DefinitionRequired) {}
+
   /// \brief If the consumer is interested in entities getting modified after
   /// their initial creation, it should return a pointer to
   /// an ASTMutationListener here.

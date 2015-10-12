@@ -1116,6 +1116,14 @@ Sema::ActOnCXXNew(SourceLocation StartLoc, bool UseGlobal,
   if (ParenListExpr *List = dyn_cast_or_null<ParenListExpr>(Initializer))
     DirectInitRange = List->getSourceRange();
 
+
+  // Mark THTable is used.
+  QualType BaseAllocType = Context.getBaseElementType(AllocType);
+  if (const RecordType *BaseRecordType = BaseAllocType->getAs<RecordType>()) {
+    CXXRecordDecl *rd = cast<CXXRecordDecl>(BaseRecordType->getDecl());
+    MarkTHTableUsed(StartLoc, rd, true);
+  }
+
   return BuildCXXNew(SourceRange(StartLoc, D.getLocEnd()), UseGlobal,
                      PlacementLParen,
                      PlacementArgs,

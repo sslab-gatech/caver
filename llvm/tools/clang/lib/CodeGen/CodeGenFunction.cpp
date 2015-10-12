@@ -37,7 +37,10 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     : CodeGenTypeCache(cgm), CGM(cgm), Target(cgm.getTarget()),
       Builder(cgm.getModule().getContext(), llvm::ConstantFolder(),
               CGBuilderInserterTy(this)), CapturedStmtInfo(nullptr),
-      SanOpts(&CGM.getLangOpts().Sanitize), AutoreleaseResult(false), BlockInfo(nullptr),
+      SanOpts(&CGM.getLangOpts().Sanitize), IsSanitizerScope(false),
+      QualTypeForSantizerScope(QualType()),
+      SanitizerScopeMetaString(StringRef("nosanitize")),
+      AutoreleaseResult(false), BlockInfo(nullptr),
       BlockPointer(nullptr), LambdaThisCaptureField(nullptr),
       NormalCleanupDest(nullptr), NextCleanupDestIndex(1),
       FirstBlockInfo(nullptr), EHResumeBlock(nullptr), ExceptionSlot(nullptr),
@@ -1637,11 +1640,44 @@ llvm::Value *CodeGenFunction::EmitFieldAnnotations(const FieldDecl *D,
 
 CodeGenFunction::CGCapturedStmtInfo::~CGCapturedStmtInfo() { }
 
+CodeGenFunction::SanitizerScope::SanitizerScope(CodeGenFunction *CGF,
+                                                StringRef MetaString,
+                                                QualType QTY)
+  : CGF(CGF) {
+  assert(!CGF->IsSanitizerScope);
+  assert(CGF->QualTypeForSantizerScope.isNull());
+  
+  CGF->IsSanitizerScope = true;
+  CGF->QualTypeForSantizerScope = QTY;
+  if (!MetaString.empty())
+    CGF->SanitizerScopeMetaString = MetaString;
+}
+
+CodeGenFunction::SanitizerScope::~SanitizerScope() {
+  CGF->IsSanitizerScope = false;
+  CGF->QualTypeForSantizerScope = QualType();
+  CGF->SanitizerScopeMetaString = StringRef("nosanitize");
+}
+
 void CodeGenFunction::InsertHelper(llvm::Instruction *I,
                                    const llvm::Twine &Name,
                                    llvm::BasicBlock *BB,
                                    llvm::BasicBlock::iterator InsertPt) const {
   LoopStack.InsertHelper(I);
+  
+  if (IsSanitizerScope) {
+    I->setMetadata(
+      CGM.getModule().getMDKindID(SanitizerScopeMetaString),
+      llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Value *>()));
+  }
+
+  if (!QualTypeForSantizerScope.isNull()) {
+    // Assign TBAA information to opt out safe-cast in LLVM pass.
+    QualType CanonQTy = getContext().getCanonicalType(QualTypeForSantizerScope);
+    llvm::MDNode *Node = CGM.getTBAAStructTypeInfo(CanonQTy);
+    assert(Node);
+    CGM.DecorateInstruction(I, Node, false);
+  }
 }
 
 template <bool PreserveNames>

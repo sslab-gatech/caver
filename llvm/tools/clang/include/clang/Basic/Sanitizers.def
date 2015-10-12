@@ -50,6 +50,12 @@ SANITIZER("thread", Thread)
 // LeakSanitizer
 SANITIZER("leak", Leak)
 
+// CverVerifier
+SANITIZER("cver", Cver)
+SANITIZER("cver-debug", CverDebug)
+SANITIZER("cver-log", CverLog)
+SANITIZER("cver-stack", CverStack)
+
 // UndefinedBehaviorSanitizer
 SANITIZER("alignment", Alignment)
 SANITIZER("array-bounds", ArrayBounds)

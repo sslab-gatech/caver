@@ -414,7 +414,8 @@ CodeGenFunction::EmitReferenceBindingToExpr(const Expr *E) {
     //   storage of suitable size and alignment to contain an object of the
     //   reference's type, the behavior is undefined.
     QualType Ty = E->getType();
-    EmitTypeCheck(TCK_ReferenceBinding, E->getExprLoc(), Value, Ty);
+    EmitTypeCheck(TCK_ReferenceBinding, E->getExprLoc(), Value, nullptr,
+                  Ty, QualType());
   }
 
   return RValue::get(Value);
@@ -443,25 +444,106 @@ static llvm::Value *emitHash16Bytes(CGBuilderTy &Builder, llvm::Value *Low,
 
 bool CodeGenFunction::sanitizePerformTypeCheck() const {
   return SanOpts->Null | SanOpts->Alignment | SanOpts->ObjectSize |
-         SanOpts->Vptr;
+         SanOpts->Vptr | SanOpts->Cver;
 }
 
-void CodeGenFunction::EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc,
-                                    llvm::Value *Address,
-                                    QualType Ty, CharUnits Alignment) {
+llvm::CallInst *
+CodeGenFunction::EmitTypeCastHelper(StringRef FunctionName,
+                                    ArrayRef<llvm::Constant *> StaticArgs,
+                                    ArrayRef<llvm::Value *> DynamicArgs) {
+  // Build arguments.
+  SmallVector<llvm::Value *, 4> Args;
+  SmallVector<llvm::Type *, 4> ArgTypes;
+
+  llvm::Constant *Info = llvm::ConstantStruct::getAnon(StaticArgs);
+  auto *InfoPtr =
+    new llvm::GlobalVariable(CGM.getModule(), Info->getType(), false,
+                             llvm::GlobalVariable::PrivateLinkage, Info);
+  InfoPtr->setUnnamedAddr(true);
+
+  Args.reserve(DynamicArgs.size() + 1);
+  ArgTypes.reserve(DynamicArgs.size() + 1);
+
+  Args.push_back(Builder.CreateBitCast(InfoPtr, Int8PtrTy));
+  ArgTypes.push_back(Int8PtrTy);
+  for (size_t i = 0, n = DynamicArgs.size(); i != n; ++i) {
+    Args.push_back(EmitCheckValue(DynamicArgs[i]));
+    ArgTypes.push_back(IntPtrTy);
+  }
+
+  // Emit a function call.
+  llvm::FunctionType *FnType =
+    llvm::FunctionType::get(CGM.Int64Ty, ArgTypes, false);
+  assert(FnType);
+
+  llvm::AttrBuilder B;
+  B.addAttribute(llvm::Attribute::UWTable);
+
+  llvm::Value *Fn = CGM.CreateRuntimeFunction(
+    FnType, FunctionName,
+    llvm::AttributeSet::get(getLLVMContext(),
+                            llvm::AttributeSet::FunctionIndex, B));
+
+  return EmitNounwindRuntimeCall(Fn, Args);
+}
+
+llvm::CallInst *CodeGenFunction::EmitTypeCastCheck(QualType DstTy,
+                                                   QualType SrcTy,
+                                                   CXXRecordDecl *RD,
+                                                   SourceLocation Loc,
+                                                   llvm::Value *AfterAddress,
+                                                   llvm::Value *BeforeAddress) {
+  SmallString<64> _buf1;
+  llvm::raw_svector_ostream MangledDstOut(_buf1);
+  CGM.getCXXABI().getMangleContext().mangleCXXRTTI(
+    DstTy.getUnqualifiedType(), MangledDstOut);
+  
+  SmallString<64> _buf2;
+  llvm::raw_svector_ostream MangledSrcOut(_buf2);
+  CGM.getCXXABI().getMangleContext().mangleCXXRTTI(
+    SrcTy.getUnqualifiedType(), MangledSrcOut);
+  
+  TH_HASH Hash =
+    CodeGenTHTables::hash_value_with_uniqueness(MangledDstOut.str(), false);
+
+  if (SanOpts->CverLog)
+    CGM.getTHTables()->dumpDowncastInfo(MangledSrcOut.str(), BeforeAddress,
+                                        MangledDstOut.str(), AfterAddress);
+
+  llvm::Constant *StaticArgs[] = {
+    EmitCheckSourceLocation(Loc),
+    CGM.GetAddrOfTypeTable(RD),
+    llvm::ConstantInt::get(Int64Ty, Hash),
+  };
+  llvm::Value *DynamicArgs[] = { BeforeAddress, AfterAddress };
+
+  // Leave the metadata on all instrumented instructions with
+  // cver_static_cast, and this metadata will be checked for security
+  // implication analysis in LLVM pass.
+  llvm::CallInst *call = EmitTypeCastHelper("__cver_handle_cast", StaticArgs,
+                                            DynamicArgs);
+  return call;
+}
+
+llvm::CallInst *
+CodeGenFunction::EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc,
+                               llvm::Value *Address,
+                               llvm::Value *BeforeAddress,
+                               QualType Ty, QualType SrcTy,
+                               CharUnits Alignment) {
   if (!sanitizePerformTypeCheck())
-    return;
+    return nullptr;
 
   // Don't check pointers outside the default address space. The null check
   // isn't correct, the object-size check isn't supported by LLVM, and we can't
   // communicate the addresses to the runtime handler for the vptr check.
   if (Address->getType()->getPointerAddressSpace())
-    return;
+    return nullptr;
 
   llvm::Value *Cond = nullptr;
   llvm::BasicBlock *Done = nullptr;
 
-  if (SanOpts->Null) {
+  if (SanOpts->Null || (SanOpts->Vptr && TCK == TCK_DowncastPointer)) {
     // The glvalue must not be an empty glvalue.
     Cond = Builder.CreateICmpNE(
         Address, llvm::Constant::getNullValue(Address->getType()));
@@ -531,6 +613,29 @@ void CodeGenFunction::EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc,
   //    -- the [pointer or glvalue] is used to access a non-static data member
   //       or call a non-static member function
   CXXRecordDecl *RD = Ty->getAsCXXRecordDecl();
+  const char *srcFilename =
+    getContext().getSourceManager().getPresumedLoc(Loc).getFilename();
+
+  // CastVerifier on static_cast<>
+  if (SanOpts->Cver &&
+      (TCK == TCK_DowncastPointer || TCK == TCK_DowncastReference) &&
+      RD && RD->hasDefinition() && !RD->isAnonymousStructOrUnion() &&
+      CGM.GetAddrOfTypeTable(RD) &&
+      (srcFilename && !CGM.getSanitizerBlacklist().isBlacklistedSrc(srcFilename))
+    ) {
+
+    SmallString<64> MangledName;
+    llvm::raw_svector_ostream Out(MangledName);
+    CGM.getCXXABI().getMangleContext().mangleCXXRTTI(Ty.getUnqualifiedType(),
+                                                     Out);
+
+    if (!CGM.getSanitizerBlacklist().isBlacklistedType(Out.str())) {
+      llvm::CallInst *call = EmitTypeCastCheck(Ty, SrcTy, RD, Loc,
+                                               Address, BeforeAddress);
+      return call;      
+    }
+  } 
+
   if (SanOpts->Vptr &&
       (TCK == TCK_MemberAccess || TCK == TCK_MemberCall ||
        TCK == TCK_DowncastPointer || TCK == TCK_DowncastReference) &&
@@ -592,6 +697,7 @@ void CodeGenFunction::EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc,
     Builder.CreateBr(Done);
     EmitBlock(Done);
   }
+  return nullptr;
 }
 
 /// Determine whether this expression refers to a flexible array member in a
@@ -759,8 +865,8 @@ LValue CodeGenFunction::EmitCheckedLValue(const Expr *E, TypeCheckKind TCK) {
   else
     LV = EmitLValue(E);
   if (!isa<DeclRefExpr>(E) && !LV.isBitField() && LV.isSimple())
-    EmitTypeCheck(TCK, E->getExprLoc(), LV.getAddress(),
-                  E->getType(), LV.getAlignment());
+    EmitTypeCheck(TCK, E->getExprLoc(), LV.getAddress(), nullptr,
+                  E->getType(), QualType(), LV.getAlignment());
   return LV;
 }
 
@@ -2088,6 +2194,7 @@ LValue CodeGenFunction::EmitPredefinedLValue(const PredefinedExpr *E) {
 ///
 /// followed by an array of i8 containing the type name. TypeKind is 0 for an
 /// integer, 1 for a floating point value, and -1 for anything else.
+
 llvm::Constant *CodeGenFunction::EmitCheckTypeDescriptor(QualType T) {
   // Only emit each type's descriptor once.
   if (llvm::Constant *C = CGM.getTypeDescriptorFromMap(T))
@@ -2488,7 +2595,8 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   if (E->isArrow()) {
     llvm::Value *Ptr = EmitScalarExpr(BaseExpr);
     QualType PtrTy = BaseExpr->getType()->getPointeeType();
-    EmitTypeCheck(TCK_MemberAccess, E->getExprLoc(), Ptr, PtrTy);
+    EmitTypeCheck(TCK_MemberAccess, E->getExprLoc(), Ptr, nullptr,
+                  PtrTy, QualType());
     BaseLV = MakeNaturalAlignAddrLValue(Ptr, PtrTy);
   } else
     BaseLV = EmitCheckedLValue(BaseExpr, TCK_MemberAccess);
@@ -2886,10 +2994,13 @@ LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
 
     // C++11 [expr.static.cast]p2: Behavior is undefined if a downcast is
     // performed and the object is not of the derived type.
-    if (sanitizePerformTypeCheck())
-      EmitTypeCheck(TCK_DowncastReference, E->getExprLoc(),
-                    Derived, E->getType());
-
+    if (sanitizePerformTypeCheck()) {
+      // llvm::Value *CheckAddress = SanOpts->Cver ? LV.getAddress() : Derived;
+      EmitTypeCheck(TCK_DowncastReference, E->getExprLoc(), Derived,
+                    LV.getAddress(), E->getType(),
+                    E->getSubExpr()->getType());
+    }
+    
     return MakeAddrLValue(Derived, E->getType());
   }
   case CK_LValueBitCast: {

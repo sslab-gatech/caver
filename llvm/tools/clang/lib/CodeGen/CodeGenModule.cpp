@@ -78,7 +78,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
     : Context(C), LangOpts(C.getLangOpts()), CodeGenOpts(CGO), TheModule(M),
       Diags(diags), TheDataLayout(TD), Target(C.getTargetInfo()),
       ABI(createCXXABI(*this)), VMContext(M.getContext()), TBAA(nullptr),
-      TheTargetCodeGenInfo(nullptr), Types(*this), VTables(*this),
+      TheTargetCodeGenInfo(nullptr), Types(*this), VTables(*this), THTables(*this),
       ObjCRuntime(nullptr), OpenCLRuntime(nullptr), OpenMPRuntime(nullptr),
       CUDARuntime(nullptr), DebugInfo(nullptr), ARCData(nullptr),
       NoObjCARCExceptionsMetadata(nullptr), RRData(nullptr), PGOReader(nullptr),
@@ -1059,6 +1059,7 @@ void CodeGenModule::EmitDeferred() {
     DeferredGlobal &G = DeferredDeclsToEmit.back();
     GlobalDecl D = G.GD;
     llvm::GlobalValue *GV = G.GV;
+
     DeferredDeclsToEmit.pop_back();
 
     assert(GV == GetGlobalValue(getMangledName(D)));
@@ -1952,6 +1953,70 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D) {
   if (NeedsGlobalCtor || NeedsGlobalDtor)
     EmitCXXGlobalVarDeclInitFunc(D, GV, NeedsGlobalCtor);
 
+  CodeGenFunction *CGF = new CodeGenFunction(*this);  
+  if (CGF && CGF->SanOpts->Cver) {
+    QualType Ty = D->getType();
+    CXXRecordDecl *RD = Ty->getAsCXXRecordDecl();
+    uint64_t AllocSize = getContext().getTypeSizeInChars(Ty).getQuantity();
+
+    SmallString<64> MangledName;
+    llvm::raw_svector_ostream Out(MangledName);
+    getCXXABI().getMangleContext().mangleCXXRTTI(Ty.getUnqualifiedType(),
+                                                 Out);
+    
+    if (GV && AllocSize > 0 && RD && RD->hasDefinition()
+        && !RD->isAnonymousStructOrUnion() && GetAddrOfTypeTable(RD)
+        && !getSanitizerBlacklist().isBlacklistedType(Out.str())) {
+      llvm::Constant *TypeTableAddr = GetAddrOfTypeTable(RD);
+      llvm::Type *VoidTy = llvm::Type::getVoidTy(getLLVMContext());
+      
+      /////////////////////////////////////////////////      
+      // Create the call reference to __cver_handle_global_var.
+      // http://llvm.org/docs/doxygen/html/classllvm_1_1Function.html
+      SmallVector<llvm::Type*, 8> ArgTypes;
+      ArgTypes.push_back(VoidPtrTy); // The base address of object.
+      ArgTypes.push_back(TypeTableAddr->getType()); // The address of TypeTable.
+      ArgTypes.push_back(Int64Ty); // Allocation Size.
+      
+      llvm::FunctionType *FnTypeCverHandleGlobalVar =
+        llvm::FunctionType::get(VoidTy, ArgTypes, false);
+      
+      llvm::AttrBuilder B;
+      B.addAttribute(llvm::Attribute::UWTable);
+      llvm::Constant *FnCverHandleGlobalVar = CreateRuntimeFunction(
+        FnTypeCverHandleGlobalVar, "__cver_handle_global_var",
+        llvm::AttributeSet::get(getLLVMContext(),
+                                llvm::AttributeSet::FunctionIndex, B));
+
+      /////////////////////////////////////////////////
+      // Create Wrapper function
+      // void __cver_handle_global_wrapper(uptr Address)
+
+      llvm::Function *FnCverHandleGlobalWrapper = llvm::Function::Create(
+        llvm::FunctionType::get(VoidTy, false),
+        llvm::GlobalValue::InternalLinkage,
+        "__cver_handle_global_wrapper", &getModule());
+      
+      FnCverHandleGlobalWrapper->setUnnamedAddr(true);
+      FnCverHandleGlobalWrapper->addFnAttr(llvm::Attribute::NoInline);
+
+      // Construct the body of __cver_handle_global_wrapper().
+      CGBuilderTy Builder(
+        llvm::BasicBlock::Create(
+          getLLVMContext(), "", FnCverHandleGlobalWrapper));
+
+      LValue LV = CGF->MakeAddrLValue(GV, getContext().getPointerType(Ty));
+      Builder.CreateCall3(FnCverHandleGlobalVar,
+                          Builder.CreateBitCast(LV.getAddress(), VoidPtrTy),
+                          TypeTableAddr,
+                          llvm::ConstantInt::get(Int64Ty, AllocSize));
+      Builder.CreateRetVoid();
+
+      // Push the wrappaer function to global ctors.
+      AddGlobalCtor(FnCverHandleGlobalWrapper, 0);
+    }
+  } // End of SanOpts->Cver.
+  
   reportGlobalToASan(GV, D->getLocation(), NeedsGlobalCtor);
 
   // Emit global variable debug information.
@@ -3399,4 +3464,3 @@ llvm::Constant *CodeGenModule::GetAddrOfRTTIDescriptor(QualType Ty,
 
   return getCXXABI().getAddrOfRTTIDescriptor(Ty);
 }
-

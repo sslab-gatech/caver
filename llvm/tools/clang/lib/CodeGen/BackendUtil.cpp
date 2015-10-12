@@ -184,6 +184,16 @@ static void addAddressSanitizerPasses(const PassManagerBuilder &Builder,
   PM.add(createAddressSanitizerModulePass());
 }
 
+static void addCastVerifierPass(const PassManagerBuilder &Builder,
+                                   PassManagerBase &PM) {
+  PM.add(createCastVerifierPass());
+}
+
+static void addCastVerifierPruneStackPass(const PassManagerBuilder &Builder,
+                                   PassManagerBase &PM) {
+  PM.add(createCverPruneStackPass());  
+}
+
 static void addMemorySanitizerPass(const PassManagerBuilder &Builder,
                                    PassManagerBase &PM) {
   const PassManagerBuilderWrapper &BuilderWrapper =
@@ -276,6 +286,18 @@ void EmitAssemblyHelper::CreatePasses() {
                            addMemorySanitizerPass);
     PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
                            addMemorySanitizerPass);
+  }
+
+  if (LangOpts.Sanitize.Cver) {
+    PMBuilder.addExtension(PassManagerBuilder::EP_EarlyAsPossible,
+                           addCastVerifierPass);
+    PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                           addCastVerifierPass);
+    
+    PMBuilder.addExtension(PassManagerBuilder::EP_OptimizerLast,
+                           addCastVerifierPruneStackPass);
+    PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                           addCastVerifierPruneStackPass);
   }
 
   if (LangOpts.Sanitize.Thread) {

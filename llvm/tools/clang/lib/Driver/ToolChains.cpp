@@ -344,6 +344,11 @@ void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
 
   const SanitizerArgs &Sanitize = getSanitizerArgs();
 
+  // Add Cver runtime library, if required.
+  if (Sanitize.needsCverRt()) {
+    // TODO: Fill this up.
+  }
+
   // Add Ubsan runtime library, if required.
   if (Sanitize.needsUbsanRt()) {
     // FIXME: Move this check to SanitizerArgs::filterUnsupportedKinds.

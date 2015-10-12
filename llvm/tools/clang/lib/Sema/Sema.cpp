@@ -628,6 +628,7 @@ void Sema::ActOnEndOfTranslationUnit() {
     // might lead to more pending template instantiations, which we then need
     // to instantiate.
     DefineUsedVTables();
+    DefineUsedTHTables();
 
     // C++: Perform implicit template instantiations.
     //

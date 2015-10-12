@@ -38,6 +38,7 @@ class SanitizerArgs {
     NeedsAsanRt = Address,
     NeedsTsanRt = Thread,
     NeedsMsanRt = Memory,
+    NeedsCverRt = Cver,
     NeedsDfsanRt = DataFlow,
     NeedsLeakDetection = Leak,
     NeedsUbsanRt = Undefined | Integer,
@@ -62,6 +63,7 @@ class SanitizerArgs {
   bool needsSharedAsanRt() const { return AsanSharedRuntime; }
   bool needsTsanRt() const { return Kind & NeedsTsanRt; }
   bool needsMsanRt() const { return Kind & NeedsMsanRt; }
+  bool needsCverRt() const { return Kind & NeedsCverRt; }
   bool needsLeakDetection() const { return Kind & NeedsLeakDetection; }
   bool needsLsanRt() const {
     return needsLeakDetection() && !needsAsanRt();

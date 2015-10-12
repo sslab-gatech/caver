@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "CodeGenFunction.h"
+#include "CGCXXABI.h"
 #include "CGDebugInfo.h"
 #include "CGOpenCLRuntime.h"
 #include "CodeGenModule.h"
@@ -484,6 +485,25 @@ namespace {
         ->setDoesNotThrow();
     }
   };
+
+  class CastVerifierStackExit : public EHScopeStack::Cleanup {
+    llvm::Value *Address;
+    llvm::Constant *TypeTableAddr;
+  public:
+    CastVerifierStackExit(llvm::Value *addr, llvm::Constant *typeTableAddr)
+      : Address(addr), TypeTableAddr(typeTableAddr) {}
+
+    void Emit(CodeGenFunction &CGF, Flags flags) override {
+      llvm::Constant *StaticArgs[] = {
+        TypeTableAddr
+      };
+      llvm::Value *DynamicArgs[] = {
+        Address
+      };
+      CGF.EmitTypeCastHelper("__cver_handle_stack_exit",
+                             StaticArgs, DynamicArgs);
+    }
+  };
 }
 
 /// EmitAutoVarWithLifetime - Does the setup required for an automatic
@@ -574,10 +594,10 @@ void CodeGenFunction::EmitScalarInit(const Expr *init,
     EmitStoreThroughLValue(RValue::get(value), lvalue, true);
     return;
   }
-  
+
   if (const CXXDefaultInitExpr *DIE = dyn_cast<CXXDefaultInitExpr>(init))
     init = DIE->getExpr();
-    
+
   // If we're emitting a value with lifetime, we have to do the
   // initialization *before* we leave the cleanup scopes.
   if (const ExprWithCleanups *ewc = dyn_cast<ExprWithCleanups>(init)) {
@@ -724,7 +744,7 @@ static bool canEmitInitWithFewStoresAfterMemset(llvm::Constant *Init,
     }
     return true;
   }
-  
+
   if (llvm::ConstantDataSequential *CDS =
         dyn_cast<llvm::ConstantDataSequential>(Init)) {
     for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
@@ -753,8 +773,8 @@ static void emitStoresForInitAfterMemset(llvm::Constant *Init, llvm::Value *Loc,
     Builder.CreateStore(Init, Loc, isVolatile);
     return;
   }
-  
-  if (llvm::ConstantDataSequential *CDS = 
+
+  if (llvm::ConstantDataSequential *CDS =
         dyn_cast<llvm::ConstantDataSequential>(Init)) {
     for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
       llvm::Constant *Elt = CDS->getElementAsConstant(i);
@@ -821,7 +841,51 @@ static bool shouldUseLifetimeMarkers(CodeGenFunction &CGF, const VarDecl &D,
 /// These turn into simple stack objects, or GlobalValues depending on target.
 void CodeGenFunction::EmitAutoVarDecl(const VarDecl &D) {
   AutoVarEmission emission = EmitAutoVarAlloca(D);
-  EmitAutoVarInit(emission);
+  
+  // SanitizerScope SanScope(this, StringRef("cver_stack_alloc"), Ty);
+  EmitAutoVarInit(emission);  
+  
+  if (SanOpts->Cver && SanOpts->CverStack) {
+    QualType Ty = D.getType();
+    CXXRecordDecl *RD = Ty->getAsCXXRecordDecl();
+
+    llvm::Value *Address = emission.getAllocatedAddress();
+    llvm::Value *ObjectAddress = emission.getObjectAddress(*this);
+    uint64_t AllocSize = getContext().getTypeSizeInChars(Ty).getQuantity();
+
+    // FIXME: handle emission.IsByRef
+    if (Address && Address == ObjectAddress && AllocSize > 0
+        && RD && RD->hasDefinition() && !RD->isAnonymousStructOrUnion()
+        && CGM.GetAddrOfTypeTable(RD)) {
+
+      SmallString<64> MangledName;
+      llvm::raw_svector_ostream MangledNameOut(MangledName);
+      QualType UnqualTy = Ty.getUnqualifiedType();
+      CGM.getCXXABI().getMangleContext().mangleCXXRTTI(
+        UnqualTy, MangledNameOut);
+
+      // Check if this is in safe-alloc.
+      if (!CGM.getSanitizerBlacklist().isBlacklistedAllocType(
+            MangledNameOut.str())) {
+        llvm::Constant *TypeTableAddr = CGM.GetAddrOfTypeTable(RD);      
+        llvm::Constant *StaticArgs[] = {
+          TypeTableAddr
+        };
+        llvm::Value *DynamicArgs[] = {
+          Address,
+          llvm::Constant::getNullValue(Int8PtrTy), // FIXME : numElements
+          llvm::ConstantInt::get(Int8PtrTy, AllocSize)
+        };
+        EmitTypeCastHelper("__cver_handle_stack_enter", StaticArgs, DynamicArgs);
+
+        // Cleanup
+        EHStack.pushCleanup<CastVerifierStackExit>(NormalCleanup,
+                                                   Address,
+                                                   TypeTableAddr);
+      }
+    }
+  } // End of SanOpts->CverStack.
+  
   EmitAutoVarCleanups(emission);
 }
 

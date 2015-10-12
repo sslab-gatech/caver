@@ -39,6 +39,8 @@ public:
   bool isIn(const llvm::GlobalVariable &G,
             const StringRef Category = StringRef()) const;
   bool isBlacklistedType(StringRef MangledTypeName) const;
+  bool isBlacklistedAllocType(StringRef MangledTypeName) const;  
+  bool isBlacklistedSrc(const std::string &Str) const;
 };
 }  // end namespace CodeGen
 }  // end namespace clang

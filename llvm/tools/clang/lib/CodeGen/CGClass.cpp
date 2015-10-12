@@ -1672,7 +1672,8 @@ CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
   //   is not of type X, or of a type derived from X, the behavior is undefined.
   // FIXME: Provide a source location here.
   EmitTypeCheck(CodeGenFunction::TCK_ConstructorCall, SourceLocation(), This,
-                getContext().getRecordType(D->getParent()));
+                nullptr,
+                getContext().getRecordType(D->getParent()), QualType());
 
   CallArgList Args;
 

@@ -165,6 +165,12 @@ namespace {
       Builder->EmitVTable(RD, DefinitionRequired);
     }
 
+    void HandleTHTable(CXXRecordDecl *RD, bool DefinitionRequired) override {
+      if (Diags.hasErrorOccurred())
+        return;
+      Builder->EmitTHTable(RD, DefinitionRequired);
+    }
+
     void HandleLinkerOptionPragma(llvm::StringRef Opts) override {
       Builder->AppendLinkerOptions(Opts);
     }

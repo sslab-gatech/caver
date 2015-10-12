@@ -272,6 +272,12 @@ void MultiplexConsumer::HandleVTable(
     Consumers[i]->HandleVTable(RD, DefinitionRequired);
 }
 
+void MultiplexConsumer::HandleTHTable(
+    CXXRecordDecl *RD, bool DefinitionRequired) {
+  for (size_t i = 0, e = Consumers.size(); i != e; ++i)
+    Consumers[i]->HandleTHTable(RD, DefinitionRequired);
+}
+
 ASTMutationListener *MultiplexConsumer::GetASTMutationListener() {
   return MutationListener.get();
 }
