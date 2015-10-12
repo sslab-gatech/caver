@@ -96,14 +96,14 @@ suites, and it is branched out from
 - `Clang`: adc3bbec2b4d390277094b8f33df6ec25abe96b3
 - `Compiler-rt`: 23c70c8907fd669d4cbeeba59680e40fc1b61d19
 
-, and applied a few upstream patches to fix regression bugs in LLVM
-compiler suites.
+, and applied a few upstream patches to fix regression bugs of LLVM
+compiler suites (which unfortunately mixed up with CaVer's changes).
 
-In order to check the true changes that CaVer made to LLVM/Clang
-compiler suites, the best would be using `git diff` commands.
+In order to check the true changes that CaVer made to LLVM compiler
+suites, the best would be diffing from the branching point.
 
 ```
-git diff XXX
+git diff 9b5950d61de7cade786239321298a874d7319a6d --stat
 ```
 
 In a nutshell, CaVer's majors changes are as follows.
