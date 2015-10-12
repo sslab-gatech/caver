@@ -25,6 +25,7 @@ if(NOT LLVM_USE_SANITIZER)
     add_subdirectory(lsan)
     add_subdirectory(profile)
     add_subdirectory(ubsan)
+    add_subdirectory(cver)
   endif()
   if(CMAKE_SYSTEM_NAME MATCHES "Linux" AND NOT ANDROID)
     # ThreadSanitizer and MemorySanitizer are supported on Linux only.

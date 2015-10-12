@@ -21,6 +21,8 @@
 #include "sanitizer_mutex.h"
 #include "sanitizer_lfstack.h"
 
+#define _ALWAYS_INLINE __attribute__((always_inline))
+
 namespace __sanitizer {
 
 // Depending on allocator_may_return_null either return 0 or crash.
@@ -360,8 +362,31 @@ class SizeClassAllocator64 {
     return reinterpret_cast<uptr>(p) / kSpaceSize == kSpaceBeg / kSpaceSize;
   }
 
-  static uptr GetSizeClass(const void *p) {
+  _ALWAYS_INLINE static uptr GetSizeClass(const void *p) {
     return (reinterpret_cast<uptr>(p) / kRegionSize) % kNumClassesRounded;
+  }
+
+  // Return Block begin and store metadata in the parameter
+  _ALWAYS_INLINE void *GetBlockBeginAndMetaData(const void *p, void **ppMetaData) {
+    uptr class_id = GetSizeClass(p);
+    uptr size = SizeClassMap::Size(class_id);
+    if (!size) return 0;
+    uptr chunk_idx = GetChunkIdx((uptr)p, size);
+    uptr reg_beg = (uptr)p & ~(kRegionSize - 1);
+    uptr beg = chunk_idx * size;
+    uptr next_beg = beg + size;
+    if (class_id >= kNumClasses) return 0;
+    RegionInfo *region = GetRegionInfo(class_id);
+    if (region->mapped_user >= next_beg) {
+      // compute and store metadata.
+      *ppMetaData =
+        reinterpret_cast<void*>(kSpaceBeg + (kRegionSize * (class_id + 1)) -
+                                           (1 + chunk_idx) * kMetadataSize);
+
+      // Return block begin.
+      return reinterpret_cast<void*>(reg_beg + beg);
+    }
+    return 0;
   }
 
   void *GetBlockBegin(const void *p) {
@@ -470,7 +495,7 @@ class SizeClassAllocator64 {
   static const uptr kSpaceEnd = kSpaceBeg + kSpaceSize;
   COMPILER_CHECK(kSpaceBeg % kSpaceSize == 0);
   // kRegionSize must be >= 2^32.
-  COMPILER_CHECK((kRegionSize) >= (1ULL << (SANITIZER_WORDSIZE / 2)));
+  // COMPILER_CHECK((kRegionSize) >= (1ULL << (SANITIZER_WORDSIZE / 2)));
   // Populate the free list with at most this number of bytes at once
   // or with one element if its size is greater.
   static const uptr kPopulateSize = 1 << 14;
@@ -495,13 +520,13 @@ class SizeClassAllocator64 {
                      GetPageSizeCached());
   }
 
-  RegionInfo *GetRegionInfo(uptr class_id) {
+  _ALWAYS_INLINE RegionInfo *GetRegionInfo(uptr class_id) {
     CHECK_LT(class_id, kNumClasses);
     RegionInfo *regions = reinterpret_cast<RegionInfo*>(kSpaceBeg + kSpaceSize);
     return &regions[class_id];
   }
 
-  static uptr GetChunkIdx(uptr chunk, uptr size) {
+  _ALWAYS_INLINE static uptr GetChunkIdx(uptr chunk, uptr size) {
     uptr offset = chunk % kRegionSize;
     // Here we divide by a non-constant. This is costly.
     // size always fits into 32-bits. If the offset fits too, use 32-bit div.
@@ -1306,6 +1331,18 @@ class CombinedAllocator {
     return secondary_.GetMetaData(p);
   }
 
+  void *GetBlockBeginAndMetaData(const void *p, void **ppMetaData) {
+    return primary_.GetBlockBeginAndMetaData(p, ppMetaData);    
+  }
+  
+  void *GetMetaDataPrimary(const void *p) {
+    return primary_.GetMetaData(p);
+  }
+
+  void *GetBlockBeginPrimary(const void *p) {
+    return primary_.GetBlockBegin(p);
+  }
+
   void *GetBlockBegin(const void *p) {
     if (primary_.PointerIsMine(p))
       return primary_.GetBlockBegin(p);
@@ -1372,7 +1409,6 @@ class CombinedAllocator {
     secondary_.ForEachChunk(callback, arg);
   }
 
- private:
   PrimaryAllocator primary_;
   SecondaryAllocator secondary_;
   AllocatorGlobalStats stats_;
@@ -1384,4 +1420,5 @@ bool CallocShouldReturnNullDueToOverflow(uptr size, uptr n);
 }  // namespace __sanitizer
 
 #endif  // SANITIZER_ALLOCATOR_H
+
 

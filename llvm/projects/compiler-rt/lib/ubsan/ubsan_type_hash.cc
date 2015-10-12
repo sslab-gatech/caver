@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ubsan_type_hash.h"
+#include "ubsan_flags.h"
 
 #include "sanitizer_common/sanitizer_common.h"
 
@@ -212,10 +213,13 @@ bool __ubsan::checkDynamicType(void *Object, void *Type, HashValue Hash) {
   // FIXME: Perform these checks more cautiously.
 
   // Check whether this is something we've evicted from the cache.
-  HashValue *Bucket = getTypeCacheHashTableBucket(Hash);
-  if (*Bucket == Hash) {
-    __ubsan_vptr_type_cache[Hash % VptrTypeCacheSize] = Hash;
-    return true;
+  HashValue *Bucket;
+  if (!flags()->no_cache) {
+    Bucket = getTypeCacheHashTableBucket(Hash);
+    if (*Bucket == Hash) {
+      __ubsan_vptr_type_cache[Hash % VptrTypeCacheSize] = Hash;
+      return true;
+    }
   }
 
   VtablePrefix *Vtable = getVtablePrefix(Object);
@@ -233,8 +237,10 @@ bool __ubsan::checkDynamicType(void *Object, void *Type, HashValue Hash) {
     return false;
 
   // Success. Cache this result.
-  __ubsan_vptr_type_cache[Hash % VptrTypeCacheSize] = Hash;
-  *Bucket = Hash;
+  if (!flags()->no_cache) {
+    __ubsan_vptr_type_cache[Hash % VptrTypeCacheSize] = Hash;
+    *Bucket = Hash;
+  }
   return true;
 }
 

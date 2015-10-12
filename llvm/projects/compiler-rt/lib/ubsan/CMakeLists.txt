@@ -9,6 +9,8 @@ set(UBSAN_SOURCES
 set(UBSAN_CXX_SOURCES
   ubsan_handlers_cxx.cc
   ubsan_type_hash.cc
+  ubsan_init.cc
+  ubsan_flags.cc
   )
 
 include_directories(..)

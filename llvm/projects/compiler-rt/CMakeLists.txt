@@ -372,6 +372,7 @@ filter_available_targets(MSAN_SUPPORTED_ARCH x86_64)
 filter_available_targets(PROFILE_SUPPORTED_ARCH x86_64 i386 arm aarch64)
 filter_available_targets(TSAN_SUPPORTED_ARCH x86_64)
 filter_available_targets(UBSAN_SUPPORTED_ARCH x86_64 i386 arm aarch64)
+filter_available_targets(CVER_SUPPORTED_ARCH x86_64 i386 arm aarch64)
 
 add_subdirectory(include)
 

@@ -20,3 +20,4 @@ SubDirs += profile
 SubDirs += sanitizer_common
 SubDirs += tsan
 SubDirs += ubsan
+SubDirs += cver
