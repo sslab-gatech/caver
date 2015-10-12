@@ -10,7 +10,7 @@ class T : public S {
 
 int main(){
   // CHECK: call i64 @__cver_handle_new(i8* bitcast ({ i8* }*
-  // CHECK: call i64 @__cver_handle_cast(i8* bitcast ({ { [84 x i8]*, i32, i32 }, i8*, i64 }* @3 to 
+  // CHECK: call i64 @__cver_handle_cast(i8* bitcast ({ { [{{.*}} x i8]*, i32, i32 }, i8*, i64 }* @3 to 
   S *ps = new S();
   T *pt = static_cast<T*>(ps);
   return 0;
