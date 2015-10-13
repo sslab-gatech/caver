@@ -108,28 +108,28 @@ git diff 9b5950d61de7cade786239321298a874d7319a6d --stat
 
 In a nutshell, CaVer's majors changes are as follows.
 
-`CGTHTables.h` in `llvm/tools/clang/lib/CodeGen` implements Type
+- `CGTHTables.h` in `llvm/tools/clang/lib/CodeGen` implements Type
 Hierarchy Table.
 
-`CGExpr.cpp` and `CGExpr.cpp` in `llvm/tools/clang/lib/CodeGen`
+- `CGExpr.cpp` and `CGExpr.cpp` in `llvm/tools/clang/lib/CodeGen`
 inspects the casting operations, and instrument the runtime calls in
 case of downcasting. Much of the implementation is based on Undefined
 Sanitizers.
 
-`CGDecl.cpp` in `llvm/tools/clang/lib/CodeGen` instruments a tracing
+- `CGDecl.cpp` in `llvm/tools/clang/lib/CodeGen` instruments a tracing
 routine on stack variable allocation and deallocation.
 
-`CastVerifier.cpp` in `llvm/lib/Transforms/Instrumentation` implements
+- `CastVerifier.cpp` in `llvm/lib/Transforms/Instrumentation` implements
 a LLVM pass for CaVer. As an optimization technique, this pass enables
 CaVer to avoiding to trace unnecesary class allocations.
 
-`cver_*.cc` and `cver_*.h` in `llvm/projects/compiler-rt/lib/cver`
+- `cver_*.cc` and `cver_*.h` in `llvm/projects/compiler-rt/lib/cver`
 implements a runtime library of CaVer, which keeps track of allocation
 metadata and finally carries out casting verfication if required.
 
 ### Contributors
 
-Byoungyoung Lee (blee@gatech.edu)
-Chengyu Song (csong84@gatech.edu)
-Taesoo Kim (taesoo@gatech.edu)
-Wenke Lee (wenke@cc.gatech.edu)
+- Byoungyoung Lee (blee@gatech.edu)
+- Chengyu Song (csong84@gatech.edu)
+- Taesoo Kim (taesoo@gatech.edu)
+- Wenke Lee (wenke@cc.gatech.edu)
