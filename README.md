@@ -5,8 +5,13 @@ LLVM compiler suite, CaVer first performs program instrumentations at
 compile time and then validates type casting based on a new runtime
 type tracing mechanism.
 
-For more details and demos, please check our project page, ESHard
-(https://sslab.gtisc.gatech.edu/pages/eshard-extreme-software-hardening.html).
+For more details and demos, please check our project page,
+[ESHard](https://sslab.gtisc.gatech.edu/pages/eshard-extreme-software-hardening.html).
+and the published paper [Type Casting Verification: Stopping an Emerging Attack
+Vector, USENIX Security 2015](http://www.cc.gatech.edu/~blee303/paper/caver.pdf).
+
+CaVer won the [Internet Defense Prize](http://internetdefenseprize.org/) from
+Facebook and USENIX Security, and we are grateful for their supports.
 
 ### How to build
 ```
