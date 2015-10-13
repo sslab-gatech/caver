@@ -134,7 +134,7 @@ metadata and finally carries out casting verfication if required.
 
 ### Contributors
 
-- Byoungyoung Lee (blee@gatech.edu)
-- Chengyu Song (csong84@gatech.edu)
-- Taesoo Kim (taesoo@gatech.edu)
-- Wenke Lee (wenke@cc.gatech.edu)
+- [Byoungyoung Lee](http://www.cc.gatech.edu/~blee303/)
+- [Chengyu Song](http://www.cc.gatech.edu/grads/c/csong43/)
+- [Taesoo Kim](https://taesoo.gtisc.gatech.edu/)
+- [Wenke Lee](http://wenke.gtisc.gatech.edu/)
