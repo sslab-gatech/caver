@@ -14,6 +14,6 @@ test:
 	(cd ${BUILD_DIR} && make check-clang-cver -j`nproc`)
 
 clean:
-	rm -f ${BUILD_DIR}
+	rm -rf ${BUILD_DIR}
 
 .PHONY: caver test clean
